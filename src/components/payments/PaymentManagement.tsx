@@ -9,7 +9,6 @@ import { Plus, Search, CreditCard, DollarSign, Check, Calendar, Building } from 
 const getPaymentNumber = (p: any) => p.payment_number ?? p.paymentNumber ?? 'N/A';
 const getPaymentDate = (p: any) => p.payment_date ?? p.paymentDate ?? null;
 const getCustomerName = (p: any) => {
-  // Try nested customer object first
   if (p.customer) {
     if (p.customer.company_name) return p.customer.company_name;
     if (p.customer.companyName) return p.customer.companyName;
@@ -18,7 +17,6 @@ const getCustomerName = (p: any) => {
     if (p.customer.fullName) return p.customer.fullName;
     if (p.customer.business_name) return p.customer.business_name;
   }
-  // Try direct fields on the payment
   if (p.customerName) return p.customerName;
   if (p.customer_name) return p.customer_name;
   return 'N/A';
@@ -50,15 +48,22 @@ export default function PaymentManagement() {
     fetchPayments();
   }, [user, customer]);
 
+  // ===== UPDATED fetchPayments – no more "undefined" =====
   const fetchPayments = async () => {
     setIsLoading(true);
     try {
-      const response = await apiService.getPayments({
+      // ✅ Build params conditionally
+      const params: any = {
         page: 1,
         limit: 100,
-        customer_id: user?.role === 'customer' && customer ? customer.id : undefined,
-      });
+      };
+      // Only add customer_id if user is a customer and has an ID
+      if (user?.role === 'customer' && customer?.id) {
+        params.customer_id = customer.id;
+      }
+      console.log('📤 Payments params:', params);  // debug
 
+      const response = await apiService.getPayments(params);
       console.log('📦 Raw payments response:', response);
 
       let data = null;
@@ -102,7 +107,6 @@ export default function PaymentManagement() {
       setPayments(Array.isArray(data) ? data : []);
       if (data.length > 0) {
         console.log('🔍 First payment sample:', data[0]);
-        // Debug: show customer object
         console.log('🔍 Customer object in payment:', data[0].customer);
       }
     } catch (error) {
