@@ -46,54 +46,58 @@ export default function InvoiceManagement() {
     fetchInvoices();
   }, [user, customer]);
 
+  // ===== UPDATED fetchInvoices =====
   const fetchInvoices = async () => {
     setIsLoading(true);
     try {
-      const response = await apiService.getInvoices({
+      const params: any = {
         page: 1,
         limit: 100,
-        payment_status: filterStatus || undefined,
-        customer_id: user?.role === 'customer' && customer ? customer.id : undefined,
-      });
+      };
+      // Only add payment_status if defined
+      if (filterStatus) {
+        params.payment_status = filterStatus;
+      }
+      // Only add customer_id if user is customer and customer exists
+      if (user?.role === 'customer' && customer?.id) {
+        params.customer_id = customer.id;
+      }
+      // Admin will not send customer_id – backend will return all
 
+      const response = await apiService.getInvoices(params);
       console.log('📦 Raw invoices response:', response);
 
       let data = null;
-      const root = response || {};
-      if (Array.isArray(root)) {
-        data = root;
-      } else if (root.data) {
-        if (Array.isArray(root.data)) {
-          data = root.data;
-        } else if (typeof root.data === 'object') {
-          const nested = root.data;
-          const possibleKeys = ['content', 'items', 'results', 'data', 'list', 'records', 'rows', 'invoices'];
-          for (const key of possibleKeys) {
-            if (Array.isArray(nested[key])) {
-              data = nested[key];
-              console.log(`✅ Found invoices in response.data.${key} (length: ${data.length})`);
-              break;
-            }
-          }
-          if (!data && Array.isArray(nested)) data = nested;
-        }
+      // Since we fixed the backend, response should be { data: { content: [...] } }
+      if (response?.data?.content && Array.isArray(response.data.content)) {
+        data = response.data.content;
+        console.log('✅ Found invoices in response.data.content (length: ' + data.length + ')');
+      } else if (response?.data && Array.isArray(response.data)) {
+        data = response.data;
+        console.log('✅ Found invoices in response.data (length: ' + data.length + ')');
+      } else if (Array.isArray(response)) {
+        data = response;
+        console.log('✅ Found invoices in response (length: ' + data.length + ')');
       } else {
-        const topKeys = ['content', 'items', 'results', 'data', 'list', 'records', 'rows', 'invoices'];
-        for (const key of topKeys) {
+        // Fallback: scan common keys
+        const root = response || {};
+        const possibleKeys = ['content', 'items', 'results', 'data', 'list', 'records', 'rows', 'invoices'];
+        for (const key of possibleKeys) {
           if (Array.isArray(root[key])) {
             data = root[key];
             console.log(`✅ Found invoices in response.${key} (length: ${data.length})`);
             break;
           }
+          if (root.data && Array.isArray(root.data[key])) {
+            data = root.data[key];
+            console.log(`✅ Found invoices in response.data.${key} (length: ${data.length})`);
+            break;
+          }
         }
-      }
-      if (!data && response?.data?.content) {
-        data = response.data.content;
-        console.log('✅ Fallback: found invoices in response.data.content');
-      }
-      if (!data) {
-        console.warn('⚠️ No invoices array found – using empty array.');
-        data = [];
+        if (!data) {
+          data = [];
+          console.warn('⚠️ No invoices array found – using empty array.');
+        }
       }
 
       setInvoices(Array.isArray(data) ? data : []);

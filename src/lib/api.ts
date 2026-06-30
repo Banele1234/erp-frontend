@@ -1,6 +1,12 @@
 // src/lib/api.ts
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080/api/v1';
+// ✅ Force Railway URL – ignore .env for now
+const API_BASE = 'https://erp-backend-production-5201.up.railway.app/api/v1';
+// Optionally, keep the env fallback:
+// const API_BASE = import.meta.env.VITE_API_URL || 'https://erp-backend-production-5201.up.railway.app/api/v1';
+
+console.log('🔧 API_BASE:', API_BASE);  // 👈 check console for this
+
 const TOKEN_KEY = 'token';
 
 class ApiService {
@@ -269,7 +275,7 @@ class ApiService {
     }, true);
   }
 
-  // ---- Orders (FIXED with comprehensive extraction) ----
+  // ---- Orders ----
   getOrders(params?: { page?: number; limit?: number; status?: string; customer_id?: string }) {
     return this._request<any>(`/orders${params ? `?${new URLSearchParams(params as any).toString()}` : ''}`, { method: 'GET' }, true)
       .then(response => {
@@ -277,43 +283,27 @@ class ApiService {
         let orders: any[] = [];
 
         try {
-          // 1) If response is already an array
           if (Array.isArray(response)) {
             orders = response;
-          }
-          // 2) If response.data is an array
-          else if (response?.data && Array.isArray(response.data)) {
+          } else if (response?.data && Array.isArray(response.data)) {
             orders = response.data;
-          }
-          // 3) If response.data has a content array (pagination)
-          else if (response?.data?.content && Array.isArray(response.data.content)) {
+          } else if (response?.data?.content && Array.isArray(response.data.content)) {
             orders = response.data.content;
-          }
-          // 4) If response.data has an items array
-          else if (response?.data?.items && Array.isArray(response.data.items)) {
+          } else if (response?.data?.items && Array.isArray(response.data.items)) {
             orders = response.data.items;
-          }
-          // 5) If response.data has a data array (nested)
-          else if (response?.data?.data && Array.isArray(response.data.data)) {
+          } else if (response?.data?.data && Array.isArray(response.data.data)) {
             orders = response.data.data;
-          }
-          // 6) If response itself has a content or items array
-          else if (response?.content && Array.isArray(response.content)) {
+          } else if (response?.content && Array.isArray(response.content)) {
             orders = response.content;
-          }
-          else if (response?.items && Array.isArray(response.items)) {
+          } else if (response?.items && Array.isArray(response.items)) {
             orders = response.items;
-          }
-          // 7) Fallback: scan all keys of response and response.data for an array
-          else if (response && typeof response === 'object') {
-            // First scan top-level keys
+          } else if (response && typeof response === 'object') {
             for (const key of Object.keys(response)) {
               if (Array.isArray(response[key])) {
                 orders = response[key];
                 break;
               }
             }
-            // If not found, scan response.data
             if (orders.length === 0 && response.data && typeof response.data === 'object') {
               for (const key of Object.keys(response.data)) {
                 if (Array.isArray(response.data[key])) {
