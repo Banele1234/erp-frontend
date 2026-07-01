@@ -35,15 +35,27 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount)}`;
 
+// Helper: safely get a field from an object
+const getField = (obj: any, keys: string[], fallback: any = null) => {
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+  }
+  return fallback;
+};
+
 // Helper: group orders by month
 const groupOrdersByMonth = (orders: any[]) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const map: Record<string, { revenue: number; orders: number }> = {};
   orders.forEach((o) => {
-    const date = new Date(o.order_date);
+    const dateStr = getField(o, ['orderDate', 'order_date', 'createdAt', 'created_at']);
+    if (!dateStr) return;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return;
     const month = months[date.getMonth()];
     if (!map[month]) map[month] = { revenue: 0, orders: 0 };
-    map[month].revenue += o.total_amount || 0;
+    const amount = getField(o, ['totalAmount', 'total_amount'], 0);
+    map[month].revenue += amount;
     map[month].orders += 1;
   });
   const availableMonths = Object.keys(map);
@@ -91,7 +103,7 @@ export default function Reports() {
       const productsData = productsRes.data?.data || productsRes.data?.content || productsRes.data || [];
       const products = Array.isArray(productsData) ? productsData : [];
 
-      // Fetch top products separately (with safe extraction)
+      // Top products
       let topProductsRes;
       try {
         topProductsRes = await apiService.request('/dashboard/top-products', { method: 'GET' });
@@ -100,13 +112,19 @@ export default function Reports() {
         topProductsRes = null;
       }
 
-      const totalRevenue = orders.reduce((sum: number, o: any) => sum + (o.total_amount || 0), 0);
+      // Calculate stats using robust field extraction
+      const totalRevenue = orders.reduce((sum: number, o: any) => {
+        const amount = getField(o, ['totalAmount', 'total_amount'], 0);
+        return sum + amount;
+      }, 0);
       const totalOrders = orders.length;
       const totalCustomers = customers.length;
 
+      // Monthly data
       const monthly = groupOrdersByMonth(orders);
       setMonthlyData(monthly.slice(-6));
 
+      // Category breakdown from products
       const categoryMap: Record<string, number> = {};
       products.forEach((p: any) => {
         const cat = p.category || 'Uncategorized';
@@ -115,7 +133,7 @@ export default function Reports() {
       const totalProducts = products.length;
       const categoryBreakdown = Object.entries(categoryMap).map(([name, count]) => ({
         name,
-        value: Math.round((count / totalProducts) * 100),
+        value: totalProducts ? Math.round((count / totalProducts) * 100) : 0,
       }));
       setCategoryData(categoryBreakdown.length ? categoryBreakdown : [
         { name: 'Fast Moving', value: 38 },
@@ -124,6 +142,7 @@ export default function Reports() {
         { name: 'Slow Moving', value: 12 },
       ]);
 
+      // Top products
       let top = topProductsRes?.data || [];
       if (!top.length) {
         top = [
@@ -135,13 +154,20 @@ export default function Reports() {
       }
       setTopProducts(top.slice(0, 5));
 
-      const recent = orders.slice(0, 5).map((o: any) => ({
-        id: o.order_number || o.id,
-        title: `Order ${o.order_number || o.id}`,
-        date: new Date(o.order_date).toLocaleDateString(),
-        owner: o.customer?.company_name || 'Customer',
-        order: o,
-      }));
+      // Recent reports – fixed date extraction
+      const recent = orders.slice(0, 5).map((o: any) => {
+        const orderNumber = getField(o, ['orderNumber', 'order_number'], o.id);
+        const dateStr = getField(o, ['orderDate', 'order_date', 'createdAt', 'created_at']);
+        const date = dateStr ? new Date(dateStr) : null;
+        const formattedDate = date && !isNaN(date.getTime()) ? date.toLocaleDateString() : 'Invalid Date';
+        return {
+          id: orderNumber,
+          title: `Order ${orderNumber}`,
+          date: formattedDate,
+          owner: getField(o, ['customer.companyName', 'customer.company_name', 'customerName'], 'Customer'),
+          order: o,
+        };
+      });
       setRecentReports(recent);
 
       setStats({
@@ -194,14 +220,20 @@ export default function Reports() {
   const handleDownloadReport = (report: any) => {
     if (report.order) {
       const order = report.order;
+      const orderNumber = getField(order, ['orderNumber', 'order_number'], 'N/A');
+      const customer = getField(order, ['customer.companyName', 'customer.company_name', 'customerName'], 'N/A');
+      const total = getField(order, ['totalAmount', 'total_amount'], 0);
+      const status = getField(order, ['status'], 'N/A');
+      const dateStr = getField(order, ['orderDate', 'order_date', 'createdAt', 'created_at']);
+      const date = dateStr ? new Date(dateStr).toLocaleDateString() : 'N/A';
       const invoiceData = [{
-        'Order Number': order.order_number,
-        'Date': new Date(order.order_date).toLocaleDateString(),
-        'Customer': order.customer?.company_name || 'N/A',
-        'Total': order.total_amount || 0,
-        'Status': order.status || 'N/A',
+        'Order Number': orderNumber,
+        'Date': date,
+        'Customer': customer,
+        'Total': total,
+        'Status': status,
       }];
-      exportCSV(invoiceData, `receipt_${order.order_number}`, ['Order Number', 'Date', 'Customer', 'Total', 'Status']);
+      exportCSV(invoiceData, `receipt_${orderNumber}`, ['Order Number', 'Date', 'Customer', 'Total', 'Status']);
     } else {
       const data = [{ title: report.title, date: report.date, owner: report.owner }];
       exportCSV(data, `report_${report.id}`, ['title', 'date', 'owner']);
@@ -309,8 +341,8 @@ export default function Reports() {
             <h2 className="text-lg font-semibold text-slate-900">Revenue Trend</h2>
             <span className="text-sm text-slate-500">Updated today</span>
           </div>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%" aspect={2}>
               <LineChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
                 <XAxis dataKey="month" stroke="#64748B" />
@@ -327,8 +359,8 @@ export default function Reports() {
             <h2 className="text-lg font-semibold text-slate-900">Category Share</h2>
             <BadgeCheck className="w-5 h-5 text-slate-400" />
           </div>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%" aspect={1}>
               <PieChart>
                 <Pie
                   data={categoryData}
@@ -390,7 +422,7 @@ export default function Reports() {
               <div key={report.id} className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3">
                 <div>
                   <p className="font-medium text-slate-900">{report.title}</p>
-                  <p className="text-sm text-slate-500">{report.id} • {report.owner}</p>
+                  <p className="text-sm text-slate-500">{report.owner}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-500">{report.date}</span>
