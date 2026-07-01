@@ -270,7 +270,7 @@ export default function Reports() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm text-slate-500">Analytics</p>
-          <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
+          <h1 className="text-2xl font-bold text-slate-900">Admin Reports</h1>
         </div>
         <div className="flex items-center gap-3">
           <button className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -288,6 +288,7 @@ export default function Reports() {
         </div>
       </div>
 
+      {/* rest of the component unchanged */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -335,6 +336,7 @@ export default function Reports() {
         </div>
       </div>
 
+      {/* the rest of the JSX stays exactly the same as before */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
           <div className="mb-4 flex items-center justify-between">
