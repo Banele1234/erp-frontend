@@ -1,11 +1,9 @@
 // src/lib/api.ts
 
-// ✅ Force Railway URL – ignore .env for now
-const API_BASE = 'https://erp-backend-production-5201.up.railway.app/api/v1';
-// Optionally, keep the env fallback:
-// const API_BASE = import.meta.env.VITE_API_URL || 'https://erp-backend-production-5201.up.railway.app/api/v1';
+// ✅ Use environment variable, fallback to Railway URL
+const API_BASE = import.meta.env.VITE_API_URL || 'https://erp-backend-production-5201.up.railway.app/api/v1';
 
-console.log('🔧 API_BASE:', API_BASE);  // 👈 check console for this
+console.log('🔧 API_BASE:', API_BASE);  // check console for this
 
 const TOKEN_KEY = 'token';
 
