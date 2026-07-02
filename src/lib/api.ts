@@ -417,6 +417,13 @@ class ApiService {
     return this._request<any>(`/rejections${query}`, { method: 'GET' }, true);
   }
 
+  createRejection(data: any) {
+    return this._request<any>('/rejections', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
   updateRejection(id: string, data: any) {
     return this._request<any>(`/rejections/${id}`, {
       method: 'PATCH',

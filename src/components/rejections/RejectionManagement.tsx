@@ -1,16 +1,26 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { apiService } from '../../lib/api';
-import { MaterialRejection, Customer, Product, Order } from '../../types';
+import { MaterialRejection, Customer, Product, Order, Warehouse } from '../../types';
 import { Card, Button, Badge, Modal, Input, Select, LoadingSpinner, EmptyState, Table, TableHeader, TableBody, TableRow, TableCell } from '../common/StatusBadge';
 import { Plus, Search, AlertTriangle, Check, X, Clock } from 'lucide-react';
 
 export default function RejectionManagement() {
+  const { user } = useAuth();
   const [rejections, setRejections] = useState<MaterialRejection[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [selectedRejection, setSelectedRejection] = useState<MaterialRejection | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // For create modal
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
 
   useEffect(() => {
     fetchRejections();
@@ -19,12 +29,15 @@ export default function RejectionManagement() {
   const fetchRejections = async () => {
     setIsLoading(true);
     try {
-      const response = await apiService.getRejections({
+      const params: any = {
         page: 1,
         limit: 100,
-        status: filterStatus || undefined,
-      });
-      // ✅ Safely extract array from response
+      };
+      if (filterStatus) {
+        params.status = filterStatus;
+      }
+
+      const response = await apiService.getRejections(params);
       const data = response.data?.data || response.data?.content || response.data || [];
       setRejections(Array.isArray(data) ? data : []);
     } catch (error) {
@@ -34,21 +47,45 @@ export default function RejectionManagement() {
     setIsLoading(false);
   };
 
-  // ✅ Safe filtering with null checks
+  const fetchOptions = async () => {
+    if (loadingOptions) return;
+    setLoadingOptions(true);
+    try {
+      const [custRes, prodRes, whRes, orderRes] = await Promise.all([
+        apiService.getCustomers({ limit: 500 }),
+        apiService.getProducts({ limit: 500 }),
+        apiService.getWarehouses(),
+        apiService.getOrders({ limit: 500 }),
+      ]);
+      setCustomers(Array.isArray(custRes) ? custRes : []);
+      setProducts(Array.isArray(prodRes) ? prodRes : []);
+      setWarehouses(Array.isArray(whRes) ? whRes : []);
+      setOrders(Array.isArray(orderRes) ? orderRes : []);
+    } catch (err) {
+      console.error('Failed to load options:', err);
+    } finally {
+      setLoadingOptions(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    fetchOptions();
+    setShowCreateModal(true);
+  };
+
+  // ✅ Fixed: use camelCase field names (rejectionNumber, rejectionDate, creditIssued, customer.companyName, product.name)
   const filteredRejections = rejections.filter((r) => {
     if (!r) return false;
     const searchLower = searchQuery.toLowerCase().trim();
-    const rejectionNumber = (r.rejection_number || '').toLowerCase();
-    const companyName = (r.customer?.company_name || '').toLowerCase();
+    const rejectionNumber = (r.rejectionNumber || '').toLowerCase();
+    const companyName = (r.customer?.companyName || '').toLowerCase();
     const matchesSearch = rejectionNumber.includes(searchLower) || companyName.includes(searchLower);
     const matchesStatus = !filterStatus || r.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
   const formatCurrency = (amount: number) => {
-    return `E ${new Intl.NumberFormat('en-US', {
-      maximumFractionDigits: 0,
-    }).format(amount)}`;
+    return `E ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount)}`;
   };
 
   const pendingCount = rejections.filter(r => r.status === 'pending').length;
@@ -62,6 +99,8 @@ export default function RejectionManagement() {
     );
   }
 
+  const canCreate = user?.role === 'admin' || user?.role === 'warehouse_staff' || user?.role === 'management';
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -69,6 +108,12 @@ export default function RejectionManagement() {
           <h1 className="text-2xl font-bold text-slate-900">Material Rejections</h1>
           <p className="text-slate-500 mt-1">Track and manage customer rejections</p>
         </div>
+        {canCreate && (
+          <Button onClick={openCreateModal}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Rejection
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -110,7 +155,7 @@ export default function RejectionManagement() {
             <div>
               <p className="text-sm text-slate-500">Total Credit Issued</p>
               <p className="text-2xl font-bold text-blue-600">
-                {formatCurrency(rejections.reduce((sum, r) => sum + (r.credit_issued || 0), 0))}
+                {formatCurrency(rejections.reduce((sum, r) => sum + (r.creditIssued || 0), 0))}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-xl">
@@ -164,12 +209,14 @@ export default function RejectionManagement() {
             <TableBody>
               {filteredRejections.map((rejection) => (
                 <TableRow key={rejection.id}>
-                  <TableCell className="font-medium">{rejection.rejection_number}</TableCell>
-                  <TableCell>{rejection.customer?.company_name}</TableCell>
+                  <TableCell className="font-medium">{rejection.rejectionNumber}</TableCell>
+                  <TableCell>{rejection.customer?.companyName}</TableCell>
                   <TableCell>{rejection.product?.name}</TableCell>
                   <TableCell>{rejection.quantity}</TableCell>
                   <TableCell className="max-w-xs truncate">{rejection.reason}</TableCell>
-                  <TableCell>{new Date(rejection.rejection_date).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {rejection.rejectionDate ? new Date(rejection.rejectionDate).toLocaleDateString() : 'N/A'}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={
                       rejection.status === 'pending' ? 'warning' :
@@ -211,11 +258,27 @@ export default function RejectionManagement() {
           fetchRejections();
         }}
       />
+
+      <CreateRejectionModal
+        isOpen={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+        }}
+        onSuccess={() => {
+          setShowCreateModal(false);
+          fetchRejections();
+        }}
+        customers={customers}
+        products={products}
+        warehouses={warehouses}
+        orders={orders}
+        loading={loadingOptions}
+      />
     </div>
   );
 }
 
-// ========== Resolve Rejection Modal (FIXED – uses apiService) ==========
+// ---------- Resolve Rejection Modal ----------
 function ResolveRejectionModal({
   rejection,
   isOpen,
@@ -236,7 +299,7 @@ function ResolveRejectionModal({
 
   useEffect(() => {
     if (rejection) {
-      const creditAmount = (rejection.product?.unit_price || 0) * (rejection.quantity || 0);
+      const creditAmount = (rejection.product?.unitPrice || 0) * (rejection.quantity || 0);
       setFormData({
         resolution: '',
         credit_issued: creditAmount,
@@ -249,9 +312,7 @@ function ResolveRejectionModal({
     e.preventDefault();
     if (!rejection) return;
     setIsSubmitting(true);
-
     try {
-      // ✅ Use apiService instead of supabase directly
       await apiService.updateRejection(rejection.id, {
         status: 'resolved',
         resolution: formData.resolution,
@@ -270,9 +331,7 @@ function ResolveRejectionModal({
   if (!rejection) return null;
 
   const formatCurrency = (amount: number) => {
-    return `E ${new Intl.NumberFormat('en-US', {
-      maximumFractionDigits: 0,
-    }).format(amount)}`;
+    return `E ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(amount)}`;
   };
 
   return (
@@ -307,7 +366,7 @@ function ResolveRejectionModal({
           type="number"
           value={formData.credit_issued}
           onChange={(e) => setFormData({ ...formData, credit_issued: Number(e.target.value) })}
-          helpText={`${rejection.quantity} x ${formatCurrency(rejection.product?.unit_price || 0)} = ${formatCurrency((rejection.product?.unit_price || 0) * (rejection.quantity || 0))}`}
+          helpText={`${rejection.quantity} x ${formatCurrency(rejection.product?.unitPrice || 0)} = ${formatCurrency((rejection.product?.unitPrice || 0) * (rejection.quantity || 0))}`}
         />
 
         <Input
@@ -318,12 +377,142 @@ function ResolveRejectionModal({
         />
 
         <div className="flex justify-end gap-3 pt-4">
-          <Button variant="outline" onClick={onClose} type="button">
-            Cancel
-          </Button>
-          <Button type="submit" isLoading={isSubmitting}>
-            Resolve
-          </Button>
+          <Button variant="outline" onClick={onClose} type="button">Cancel</Button>
+          <Button type="submit" isLoading={isSubmitting}>Resolve</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------- Create Rejection Modal ----------
+function CreateRejectionModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  customers,
+  products,
+  warehouses,
+  orders,
+  loading,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  customers: Customer[];
+  products: Product[];
+  warehouses: Warehouse[];
+  orders: Order[];
+  loading: boolean;
+}) {
+  const [formData, setFormData] = useState({
+    customer_id: '',
+    product_id: '',
+    warehouse_id: '',
+    order_id: '',
+    quantity: 1,
+    reason: '',
+    rejection_date: new Date().toISOString().split('T')[0],
+    credit_issued: 0,
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.customer_id || !formData.product_id || !formData.warehouse_id || formData.quantity <= 0) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await apiService.createRejection({
+        customerId: formData.customer_id,
+        productId: formData.product_id,
+        warehouseId: formData.warehouse_id,
+        orderId: formData.order_id || undefined,
+        quantity: formData.quantity,
+        reason: formData.reason || 'No reason provided',
+        rejectionDate: formData.rejection_date,
+        creditIssued: formData.credit_issued || 0,
+        status: 'pending',
+      });
+      onSuccess();
+    } catch (error) {
+      console.error('Error creating rejection:', error);
+      alert('Failed to create rejection. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Create Rejection" size="lg">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {loading && <p className="text-slate-500">Loading options...</p>}
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="Customer *"
+            value={formData.customer_id}
+            onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+            options={customers.map(c => ({ value: c.id, label: c.company_name }))}
+            required
+          />
+          <Select
+            label="Product *"
+            value={formData.product_id}
+            onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
+            options={products.map(p => ({ value: p.id, label: p.name }))}
+            required
+          />
+          <Select
+            label="Warehouse *"
+            value={formData.warehouse_id}
+            onChange={(e) => setFormData({ ...formData, warehouse_id: e.target.value })}
+            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+            required
+          />
+          <Select
+            label="Order (optional)"
+            value={formData.order_id}
+            onChange={(e) => setFormData({ ...formData, order_id: e.target.value })}
+            options={[
+              { value: '', label: 'None' },
+              ...orders.map(o => ({ value: o.id, label: o.order_number }))
+            ]}
+          />
+          <Input
+            label="Quantity *"
+            type="number"
+            value={formData.quantity}
+            onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
+            min={1}
+            required
+          />
+          <Input
+            label="Rejection Date"
+            type="date"
+            value={formData.rejection_date}
+            onChange={(e) => setFormData({ ...formData, rejection_date: e.target.value })}
+          />
+          <div className="col-span-2">
+            <Input
+              label="Reason"
+              value={formData.reason}
+              onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+              placeholder="Reason for rejection"
+            />
+          </div>
+          <Input
+            label="Credit Issued (optional)"
+            type="number"
+            value={formData.credit_issued}
+            onChange={(e) => setFormData({ ...formData, credit_issued: Number(e.target.value) })}
+            min={0}
+          />
+        </div>
+        <div className="flex justify-end gap-3 pt-4">
+          <Button variant="outline" onClick={onClose} type="button">Cancel</Button>
+          <Button type="submit" isLoading={isSubmitting}>Create Rejection</Button>
         </div>
       </form>
     </Modal>

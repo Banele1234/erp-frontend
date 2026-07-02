@@ -22,9 +22,8 @@ export default function ProductionTrackingManagement() {
         limit: 100,
         status: filterStatus || undefined,
       });
-      // ✅ Extract array from response
+      // ✅ Safely extract array – response may be { data: [...] } or { data: { content: [...] } }
       const data = response.data?.data || response.data?.content || response.data || [];
-      console.log('📦 Production data:', data);
       setProductions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching productions:', error);
@@ -33,18 +32,27 @@ export default function ProductionTrackingManagement() {
     setIsLoading(false);
   };
 
-  // ✅ Safe filtering with null checks
+  // ✅ Safe filtering
   const filteredProductions = productions.filter((p) => {
     if (!p) return false;
     const searchLower = searchQuery.toLowerCase().trim();
-    const batchNumber = (p.batchNumber || '').toLowerCase();
-    const productId = (p.productId || '').toLowerCase();
-    const matchesSearch = batchNumber.includes(searchLower) || productId.includes(searchLower);
+    const batchNumber = (p.batch_number || p.batchNumber || '').toLowerCase();
+    // Try product name from nested object or fallback to productId
+    const productName = (p.product?.name || p.product_name || p.productId || '').toLowerCase();
+    const matchesSearch = batchNumber.includes(searchLower) || productName.includes(searchLower);
     const matchesStatus = !filterStatus || p.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
 
-  const inProgressCount = productions.filter(p => p.status === 'in_progress').length;
+  // Helper to get value from object using multiple keys
+  const getField = (obj: any, keys: string[], fallback: any = 0) => {
+    for (const key of keys) {
+      if (obj[key] !== undefined && obj[key] !== null) return obj[key];
+    }
+    return fallback;
+  };
+
+  const inProgressCount = productions.filter(p => p.status === 'in_progress' || p.status === 'inProgress').length;
   const completedCount = productions.filter(p => p.status === 'completed').length;
 
   if (isLoading) {
@@ -103,7 +111,7 @@ export default function ProductionTrackingManagement() {
             <div>
               <p className="text-sm text-slate-500">Total Output</p>
               <p className="text-2xl font-bold text-blue-600">
-                {productions.reduce((sum, p) => sum + (p.producedQuantity || 0), 0).toLocaleString()}
+                {productions.reduce((sum, p) => sum + getField(p, ['producedQuantity', 'produced_quantity', 'quantityProduced'], 0), 0).toLocaleString()}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-xl">
@@ -157,21 +165,28 @@ export default function ProductionTrackingManagement() {
             </TableHeader>
             <TableBody>
               {filteredProductions.map((prod) => {
-                const progress = prod.plannedQuantity > 0
-                  ? Math.round((prod.producedQuantity / prod.plannedQuantity) * 100)
-                  : 0;
-                // ✅ Use productId as fallback if no product name
-                const productDisplay = prod.productId || 'N/A';
+                // ✅ Safely extract values with fallbacks
+                const batchNumber = getField(prod, ['batch_number', 'batchNumber'], 'N/A');
+                const productId = getField(prod, ['productId', 'product_id'], 'N/A');
+                const productName = getField(prod, ['product.name', 'product_name'], null);
+                const displayProduct = productName || `Product ${productId}`;
+                const planned = getField(prod, ['plannedQuantity', 'planned_quantity'], 0);
+                const produced = getField(prod, ['producedQuantity', 'produced_quantity', 'quantityProduced'], 0);
+                const rejected = getField(prod, ['rejectedQuantity', 'rejected_quantity'], 0);
+                const status = getField(prod, ['status'], 'unknown');
+                const factory = getField(prod, ['factory'], 'N/A');
+
+                const progress = planned > 0 ? Math.round((produced / planned) * 100) : 0;
 
                 return (
                   <TableRow key={prod.id}>
-                    <TableCell className="font-medium">{prod.batchNumber}</TableCell>
-                    <TableCell>{productDisplay}</TableCell>
-                    <TableCell>{prod.plannedQuantity}</TableCell>
-                    <TableCell className="font-semibold">{prod.producedQuantity}</TableCell>
+                    <TableCell className="font-medium">{batchNumber}</TableCell>
+                    <TableCell>{displayProduct}</TableCell>
+                    <TableCell>{planned}</TableCell>
+                    <TableCell className="font-semibold">{produced}</TableCell>
                     <TableCell>
-                      {prod.rejectedQuantity > 0 ? (
-                        <span className="text-red-600">{prod.rejectedQuantity}</span>
+                      {rejected > 0 ? (
+                        <span className="text-red-600">{rejected}</span>
                       ) : (
                         <span className="text-slate-400">0</span>
                       )}
@@ -189,14 +204,14 @@ export default function ProductionTrackingManagement() {
                     </TableCell>
                     <TableCell>
                       <Badge variant={
-                        prod.status === 'completed' ? 'success' :
-                        prod.status === 'in_progress' ? 'info' :
-                        prod.status === 'on_hold' ? 'warning' : 'default'
+                        status === 'completed' ? 'success' :
+                        status === 'in_progress' ? 'info' :
+                        status === 'on_hold' ? 'warning' : 'default'
                       }>
-                        {prod.status.replace('_', ' ')}
+                        {status.replace('_', ' ')}
                       </Badge>
                     </TableCell>
-                    <TableCell>{prod.factory}</TableCell>
+                    <TableCell>{factory}</TableCell>
                   </TableRow>
                 );
               })}
