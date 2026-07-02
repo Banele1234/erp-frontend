@@ -3,11 +3,21 @@ import { PackageCheck, Truck, Clock3, MapPin, Loader2, AlertTriangle, Edit } fro
 import { apiService } from '../../lib/api';
 import { Button, Modal, Input, Card, Badge, LoadingSpinner, EmptyState } from '../common/StatusBadge';
 
-// Helper: safely extract a field
+// Helper: safely extract a field (handles nested objects)
 const getField = (obj: any, keys: string[], fallback: any = 'N/A') => {
   if (!obj) return fallback;
   for (const key of keys) {
-    const value = obj[key];
+    // Support dot notation for nested paths
+    const parts = key.split('.');
+    let value = obj;
+    for (const part of parts) {
+      if (value && typeof value === 'object' && part in value) {
+        value = value[part];
+      } else {
+        value = undefined;
+        break;
+      }
+    }
     if (value !== undefined && value !== null) return value;
   }
   return fallback;
@@ -21,9 +31,18 @@ interface Order {
   customer_id: string;
   status: string;
   shipping_address?: string;
+  shippingAddress?: string;
   shipping_city?: string;
+  shippingCity?: string;
   shipping_state?: string;
+  shippingState?: string;
   shipping_pincode?: string;
+  shippingPincode?: string;
+  warehouse?: {
+    id: string;
+    name: string;
+    location?: string;
+  };
   customer?: {
     id: string;
     company_name?: string;
@@ -57,7 +76,6 @@ export default function DispatchesPage() {
     try {
       const response = await apiService.getOrders({ limit: 200 });
       
-      // ✅ Safely extract array from different response shapes
       const allOrders = response.data?.data || response.data?.content || response.data || [];
       const ordersArray = Array.isArray(allOrders) ? allOrders : [];
 
@@ -68,11 +86,10 @@ export default function DispatchesPage() {
 
       setOrders(dispatchOrders);
 
-      // Count by status
       const ready = dispatchOrders.filter((o: Order) => o.status === 'ready_for_dispatch').length;
       const transit = dispatchOrders.filter((o: Order) => o.status === 'in_transit').length;
       const delivered = dispatchOrders.filter((o: Order) => o.status === 'delivered').length;
-      const delayed = 0; // Could compute if needed
+      const delayed = 0;
 
       setStats({ readyToDispatch: ready, inTransit: transit, delayed, delivered });
     } catch (err: any) {
@@ -83,7 +100,6 @@ export default function DispatchesPage() {
     }
   };
 
-  // Helper to format status label
   const formatStatusLabel = (status: string) => {
     const map: Record<string, string> = {
       ready_for_dispatch: 'Ready to Dispatch',
@@ -94,7 +110,6 @@ export default function DispatchesPage() {
     return map[status] || status.replace(/_/g, ' ');
   };
 
-  // Helper to get status icon
   const getStatusIcon = (status: string) => {
     const icons: Record<string, any> = {
       ready_for_dispatch: PackageCheck,
@@ -105,7 +120,6 @@ export default function DispatchesPage() {
     return icons[status] || Truck;
   };
 
-  // Helper to get status color class
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       ready_for_dispatch: 'bg-emerald-100 text-emerald-700',
@@ -116,50 +130,50 @@ export default function DispatchesPage() {
     return colors[status] || 'bg-slate-100 text-slate-700';
   };
 
-  // Better extraction for customer name
   const getCustomerName = (order: Order) => {
-    if (order.customer) {
-      return getField(order.customer, ['company_name', 'companyName'], 'N/A');
-    }
-    return getField(order, ['customer_name', 'customerName'], 'N/A');
+    return getField(order, ['customer.companyName', 'customer.company_name', 'customerName', 'customer_name'], 'N/A');
   };
 
-  // Better extraction for destination
+  // === FIXED: prioritise shipping address ===
   const getDestination = (order: Order) => {
-    if (order.shipping_city) {
-      let dest = order.shipping_city;
-      if (order.shipping_state) dest += `, ${order.shipping_state}`;
-      return dest;
+    // 1. If we have shippingAddress, use it
+    const shippingAddr = getField(order, ['shippingAddress', 'shipping_address'], null);
+    if (shippingAddr) return shippingAddr;
+
+    // 2. If we have shippingCity + shippingState, combine them
+    const city = getField(order, ['shippingCity', 'shipping_city'], null);
+    const state = getField(order, ['shippingState', 'shipping_state'], null);
+    if (city) {
+      return state ? `${city}, ${state}` : city;
     }
-    if (order.shipping_address) return order.shipping_address;
-    // Fallback to warehouse location if available? Not in order.
+
+    // 3. Fallback to warehouse location
+    const warehouseLocation = getField(order, ['warehouse.location', 'warehouse.location'], null);
+    if (warehouseLocation) return warehouseLocation;
+    const warehouseName = getField(order, ['warehouse.name'], null);
+    if (warehouseName) return warehouseName;
+
     return 'N/A';
   };
 
-  // Get dispatch ID
   const getDispatchId = (order: Order) => {
     const orderNum = getField(order, ['order_number', 'orderNumber'], order.id);
     return `DSP-${orderNum.slice(-4)}`;
   };
 
-  // Handle opening modal
   const handleEditClick = (order: Order) => {
     setSelectedOrder(order);
     setShowModal(true);
   };
 
-  // Handle saving delivery details
   const handleSaveDelivery = async (data: any) => {
     console.log('Saving delivery details for order:', selectedOrder?.id, data);
     // TODO: Call API to update dispatch
-    // await apiService.patch(`/dispatches/${selectedOrder?.id}`, data);
     setShowModal(false);
     setSelectedOrder(null);
-    // Refresh list
     await fetchDispatchData();
   };
 
-  // Card colors for stats
   const cardColors: Record<string, string> = {
     readyToDispatch: 'bg-emerald-50 text-emerald-700',
     inTransit: 'bg-blue-50 text-blue-700',
@@ -206,7 +220,6 @@ export default function DispatchesPage() {
         <h1 className="text-2xl font-bold text-slate-900">Dispatches</h1>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-4">
         {dispatchCards.map((card) => (
           <div key={card.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -221,7 +234,6 @@ export default function DispatchesPage() {
         ))}
       </div>
 
-      {/* Dispatch Schedule Table */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5">
           <div className="flex items-center gap-3">
@@ -258,9 +270,7 @@ export default function DispatchesPage() {
 
                   return (
                     <tr key={order.id} className="border-t border-slate-100">
-                      <td className="px-5 py-3 font-medium text-slate-900">
-                        {dispatchId}
-                      </td>
+                      <td className="px-5 py-3 font-medium text-slate-900">{dispatchId}</td>
                       <td className="px-5 py-3 text-slate-700">{orderNumber}</td>
                       <td className="px-5 py-3 text-slate-700">{customerName}</td>
                       <td className="px-5 py-3 text-slate-700">{destination}</td>
@@ -289,7 +299,6 @@ export default function DispatchesPage() {
         </div>
       </div>
 
-      {/* Update Delivery Modal */}
       {showModal && selectedOrder && (
         <DeliveryModal
           order={selectedOrder}
@@ -304,13 +313,13 @@ export default function DispatchesPage() {
   );
 }
 
-// ---------- Delivery Modal ----------
+// ---------- Delivery Modal (unchanged) ----------
 function DeliveryModal({ order, onClose, onSave }: any) {
   const [formData, setFormData] = useState({
-    trackingNumber: '',
-    courier: '',
-    estimatedDelivery: '',
-    notes: '',
+    trackingNumber: order.dispatchTracking || '',
+    courier: order.dispatchCourier || '',
+    estimatedDelivery: order.dispatchEstimatedDelivery || '',
+    notes: order.dispatchNotes || '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 

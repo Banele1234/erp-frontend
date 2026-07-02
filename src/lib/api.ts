@@ -273,7 +273,7 @@ class ApiService {
     }, true);
   }
 
-  // ---- Orders ----
+  // ---- Orders (includes new shipping and dispatch methods) ----
   getOrders(params?: { page?: number; limit?: number; status?: string; customer_id?: string }) {
     return this._request<any>(`/orders${params ? `?${new URLSearchParams(params as any).toString()}` : ''}`, { method: 'GET' }, true)
       .then(response => {
@@ -339,6 +339,32 @@ class ApiService {
     return this._request<any>(`/orders/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    }, true);
+  }
+
+  // ---- NEW: Update shipping address ----
+  updateShipping(orderId: string, data: {
+    shippingAddress?: string;
+    shippingCity?: string;
+    shippingState?: string;
+    shippingPincode?: string;
+  }) {
+    return this._request<any>(`/orders/${orderId}/shipping`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }, true);
+  }
+
+  // ---- NEW: Update dispatch details ----
+  updateDispatch(orderId: string, data: {
+    trackingNumber?: string;
+    courier?: string;
+    estimatedDelivery?: string;
+    notes?: string;
+  }) {
+    return this._request<any>(`/orders/${orderId}/dispatch`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }, true);
   }
 
