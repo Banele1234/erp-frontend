@@ -22,8 +22,9 @@ export default function ProductionTrackingManagement() {
         limit: 100,
         status: filterStatus || undefined,
       });
-      // ✅ Safely extract array
+      // ✅ Extract array from response
       const data = response.data?.data || response.data?.content || response.data || [];
+      console.log('📦 Production data:', data);
       setProductions(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Error fetching productions:', error);
@@ -36,9 +37,9 @@ export default function ProductionTrackingManagement() {
   const filteredProductions = productions.filter((p) => {
     if (!p) return false;
     const searchLower = searchQuery.toLowerCase().trim();
-    const batchNumber = (p.batch_number || '').toLowerCase();
-    const productName = (p.product?.name || '').toLowerCase();
-    const matchesSearch = batchNumber.includes(searchLower) || productName.includes(searchLower);
+    const batchNumber = (p.batchNumber || '').toLowerCase();
+    const productId = (p.productId || '').toLowerCase();
+    const matchesSearch = batchNumber.includes(searchLower) || productId.includes(searchLower);
     const matchesStatus = !filterStatus || p.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -102,7 +103,7 @@ export default function ProductionTrackingManagement() {
             <div>
               <p className="text-sm text-slate-500">Total Output</p>
               <p className="text-2xl font-bold text-blue-600">
-                {productions.reduce((sum, p) => sum + (p.produced_quantity || 0), 0).toLocaleString()}
+                {productions.reduce((sum, p) => sum + (p.producedQuantity || 0), 0).toLocaleString()}
               </p>
             </div>
             <div className="p-3 bg-blue-100 rounded-xl">
@@ -156,18 +157,21 @@ export default function ProductionTrackingManagement() {
             </TableHeader>
             <TableBody>
               {filteredProductions.map((prod) => {
-                const progress = prod.planned_quantity > 0
-                  ? Math.round((prod.produced_quantity / prod.planned_quantity) * 100)
+                const progress = prod.plannedQuantity > 0
+                  ? Math.round((prod.producedQuantity / prod.plannedQuantity) * 100)
                   : 0;
+                // ✅ Use productId as fallback if no product name
+                const productDisplay = prod.productId || 'N/A';
+
                 return (
                   <TableRow key={prod.id}>
-                    <TableCell className="font-medium">{prod.batch_number}</TableCell>
-                    <TableCell>{prod.product?.name}</TableCell>
-                    <TableCell>{prod.planned_quantity}</TableCell>
-                    <TableCell className="font-semibold">{prod.produced_quantity}</TableCell>
+                    <TableCell className="font-medium">{prod.batchNumber}</TableCell>
+                    <TableCell>{productDisplay}</TableCell>
+                    <TableCell>{prod.plannedQuantity}</TableCell>
+                    <TableCell className="font-semibold">{prod.producedQuantity}</TableCell>
                     <TableCell>
-                      {prod.rejected_quantity > 0 ? (
-                        <span className="text-red-600">{prod.rejected_quantity}</span>
+                      {prod.rejectedQuantity > 0 ? (
+                        <span className="text-red-600">{prod.rejectedQuantity}</span>
                       ) : (
                         <span className="text-slate-400">0</span>
                       )}
