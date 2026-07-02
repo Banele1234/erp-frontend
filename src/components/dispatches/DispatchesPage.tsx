@@ -1,11 +1,23 @@
 import { useState, useEffect } from 'react';
-import { PackageCheck, Truck, Clock3, MapPin, Loader2, AlertTriangle } from 'lucide-react';
+import { PackageCheck, Truck, Clock3, MapPin, Loader2, AlertTriangle, Edit } from 'lucide-react';
 import { apiService } from '../../lib/api';
+import { Button, Modal, Input, Card, Badge, LoadingSpinner, EmptyState } from '../common/StatusBadge';
+
+// Helper: safely extract a field
+const getField = (obj: any, keys: string[], fallback: any = 'N/A') => {
+  if (!obj) return fallback;
+  for (const key of keys) {
+    const value = obj[key];
+    if (value !== undefined && value !== null) return value;
+  }
+  return fallback;
+};
 
 // Types for order data
 interface Order {
   id: string;
   order_number: string;
+  orderNumber?: string;
   customer_id: string;
   status: string;
   shipping_address?: string;
@@ -14,7 +26,8 @@ interface Order {
   shipping_pincode?: string;
   customer?: {
     id: string;
-    company_name: string;
+    company_name?: string;
+    companyName?: string;
     contact_person?: string;
   };
   created_at: string;
@@ -31,6 +44,8 @@ export default function DispatchesPage() {
     delayed: 0,
     delivered: 0,
   });
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     fetchDispatchData();
@@ -101,15 +116,15 @@ export default function DispatchesPage() {
     return colors[status] || 'bg-slate-100 text-slate-700';
   };
 
-  // For card background colors (stat cards)
-  const cardColors: Record<string, string> = {
-    readyToDispatch: 'bg-emerald-50 text-emerald-700',
-    inTransit: 'bg-blue-50 text-blue-700',
-    delayed: 'bg-amber-50 text-amber-700',
-    delivered: 'bg-slate-50 text-slate-700',
+  // Better extraction for customer name
+  const getCustomerName = (order: Order) => {
+    if (order.customer) {
+      return getField(order.customer, ['company_name', 'companyName'], 'N/A');
+    }
+    return getField(order, ['customer_name', 'customerName'], 'N/A');
   };
 
-  // Destination string from order
+  // Better extraction for destination
   const getDestination = (order: Order) => {
     if (order.shipping_city) {
       let dest = order.shipping_city;
@@ -117,8 +132,47 @@ export default function DispatchesPage() {
       return dest;
     }
     if (order.shipping_address) return order.shipping_address;
+    // Fallback to warehouse location if available? Not in order.
     return 'N/A';
   };
+
+  // Get dispatch ID
+  const getDispatchId = (order: Order) => {
+    const orderNum = getField(order, ['order_number', 'orderNumber'], order.id);
+    return `DSP-${orderNum.slice(-4)}`;
+  };
+
+  // Handle opening modal
+  const handleEditClick = (order: Order) => {
+    setSelectedOrder(order);
+    setShowModal(true);
+  };
+
+  // Handle saving delivery details
+  const handleSaveDelivery = async (data: any) => {
+    console.log('Saving delivery details for order:', selectedOrder?.id, data);
+    // TODO: Call API to update dispatch
+    // await apiService.patch(`/dispatches/${selectedOrder?.id}`, data);
+    setShowModal(false);
+    setSelectedOrder(null);
+    // Refresh list
+    await fetchDispatchData();
+  };
+
+  // Card colors for stats
+  const cardColors: Record<string, string> = {
+    readyToDispatch: 'bg-emerald-50 text-emerald-700',
+    inTransit: 'bg-blue-50 text-blue-700',
+    delayed: 'bg-amber-50 text-amber-700',
+    delivered: 'bg-slate-50 text-slate-700',
+  };
+
+  const dispatchCards = [
+    { key: 'readyToDispatch', label: 'Ready to Dispatch', value: stats.readyToDispatch },
+    { key: 'inTransit', label: 'In Transit', value: stats.inTransit },
+    { key: 'delayed', label: 'Delayed', value: stats.delayed },
+    { key: 'delivered', label: 'Delivered', value: stats.delivered },
+  ];
 
   if (loading) {
     return (
@@ -144,13 +198,6 @@ export default function DispatchesPage() {
       </div>
     );
   }
-
-  const dispatchCards = [
-    { key: 'readyToDispatch', label: 'Ready to Dispatch', value: stats.readyToDispatch },
-    { key: 'inTransit', label: 'In Transit', value: stats.inTransit },
-    { key: 'delayed', label: 'Delayed', value: stats.delayed },
-    { key: 'delivered', label: 'Delivered', value: stats.delivered },
-  ];
 
   return (
     <div className="space-y-6">
@@ -191,33 +238,47 @@ export default function DispatchesPage() {
                 <th className="px-5 py-3 text-left font-semibold text-slate-600">Customer</th>
                 <th className="px-5 py-3 text-left font-semibold text-slate-600">Destination</th>
                 <th className="px-5 py-3 text-left font-semibold text-slate-600">Status</th>
+                <th className="px-5 py-3 text-left font-semibold text-slate-600">Actions</th>
               </tr>
             </thead>
             <tbody>
               {orders.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                     No dispatch records found.
                   </td>
                 </tr>
               ) : (
                 orders.map((order) => {
                   const Icon = getStatusIcon(order.status);
+                  const dispatchId = getDispatchId(order);
+                  const customerName = getCustomerName(order);
+                  const destination = getDestination(order);
+                  const orderNumber = getField(order, ['order_number', 'orderNumber'], order.id);
+
                   return (
                     <tr key={order.id} className="border-t border-slate-100">
                       <td className="px-5 py-3 font-medium text-slate-900">
-                        DSP-{order.order_number?.slice(-4) || order.id.slice(0, 4)}
+                        {dispatchId}
                       </td>
-                      <td className="px-5 py-3 text-slate-700">{order.order_number}</td>
-                      <td className="px-5 py-3 text-slate-700">
-                        {order.customer?.company_name || 'N/A'}
-                      </td>
-                      <td className="px-5 py-3 text-slate-700">{getDestination(order)}</td>
+                      <td className="px-5 py-3 text-slate-700">{orderNumber}</td>
+                      <td className="px-5 py-3 text-slate-700">{customerName}</td>
+                      <td className="px-5 py-3 text-slate-700">{destination}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 ${getStatusColor(order.status)}`}>
                           <Icon className="w-4 h-4" />
                           {formatStatusLabel(order.status)}
                         </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditClick(order)}
+                          title="Update delivery details"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -226,6 +287,93 @@ export default function DispatchesPage() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Update Delivery Modal */}
+      {showModal && selectedOrder && (
+        <DeliveryModal
+          order={selectedOrder}
+          onClose={() => {
+            setShowModal(false);
+            setSelectedOrder(null);
+          }}
+          onSave={handleSaveDelivery}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------- Delivery Modal ----------
+function DeliveryModal({ order, onClose, onSave }: any) {
+  const [formData, setFormData] = useState({
+    trackingNumber: '',
+    courier: '',
+    estimatedDelivery: '',
+    notes: '',
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await onSave(formData);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+        <h2 className="text-xl font-bold text-slate-900 mb-4">Update Delivery Details</h2>
+        <p className="text-sm text-slate-500 mb-4">Order: {order.order_number || order.orderNumber}</p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Tracking Number</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.trackingNumber}
+              onChange={(e) => setFormData({ ...formData, trackingNumber: e.target.value })}
+              placeholder="e.g., TRK-12345"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Courier</label>
+            <input
+              type="text"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.courier}
+              onChange={(e) => setFormData({ ...formData, courier: e.target.value })}
+              placeholder="e.g., DHL, FedEx"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Estimated Delivery Date</label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={formData.estimatedDelivery}
+              onChange={(e) => setFormData({ ...formData, estimatedDelivery: e.target.value })}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700">Notes</label>
+            <textarea
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={2}
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="Additional notes"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-3">
+            <Button variant="outline" onClick={onClose} type="button">Cancel</Button>
+            <Button type="submit" isLoading={isSubmitting}>Save Delivery</Button>
+          </div>
+        </form>
       </div>
     </div>
   );
