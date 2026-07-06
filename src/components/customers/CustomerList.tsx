@@ -79,10 +79,8 @@ export default function CustomerList() {
       const data = response?.data || [];
       if (Array.isArray(data)) {
         setCustomers(data);
-        // ✅ Debug: log first customer to see field names
         if (data.length > 0) {
           console.log('🔍 First customer sample:', data[0]);
-          console.log('🔍 Customer type field:', data[0].customer_type, data[0].customerType, data[0].type);
         }
       } else {
         console.error('❌ Response data is not an array:', data);
@@ -105,12 +103,10 @@ export default function CustomerList() {
     fetchCustomers(true);
   };
 
-  // ✅ Helper to get customer type from any field name
   const getCustomerType = (c: any): string => {
     return c.customer_type || c.customerType || c.type || '';
   };
 
-  // ✅ Real‑time filtering with robust type extraction
   const filteredCustomers = customers.filter((c) => {
     if (!c) return false;
     const searchLower = searchQuery.toLowerCase().trim();
@@ -180,7 +176,6 @@ export default function CustomerList() {
 
       <Card>
         <div className="flex flex-col md:flex-row gap-4 mb-6">
-          {/* Search input */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
             <input
@@ -192,7 +187,6 @@ export default function CustomerList() {
             />
           </div>
 
-          {/* ✅ Native select for type filter */}
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
@@ -482,7 +476,7 @@ function AddCustomerModal({
 }) {
   const [formData, setFormData] = useState({
     email: '',
-    password: '',
+    password: '',       // ✅ Password field included
     company_name: '',
     contact_person: '',
     phone: '',
@@ -522,7 +516,7 @@ function AddCustomerModal({
     try {
       const payload = {
         email: formData.email.trim(),
-        password: formData.password.trim() || undefined,
+        password: formData.password.trim() || undefined,  // ✅ Password sent
         companyName: formData.company_name.trim(),
         contactPerson: formData.contact_person.trim(),
         phone: formData.phone.trim(),

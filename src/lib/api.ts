@@ -103,6 +103,15 @@ class ApiService {
     }, false);
   }
 
+  // ✅ ADDED: Register method
+  register(data: any) {
+    console.log('📡 Register request with:', data);
+    return this._request<any>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }, false);
+  }
+
   logout() {
     this.removeToken();
     return Promise.resolve();
@@ -183,6 +192,28 @@ class ApiService {
       method: 'POST',
       body: JSON.stringify(data),
     }, true);
+  }
+
+  // ---- Settings ----
+  getSettings() {
+    try {
+      const stored = localStorage.getItem('app_settings');
+      if (stored) {
+        return Promise.resolve({ data: JSON.parse(stored) });
+      }
+      return Promise.resolve({ data: {} });
+    } catch (e) {
+      return Promise.resolve({ data: {} });
+    }
+  }
+
+  updateSettings(data: any) {
+    try {
+      localStorage.setItem('app_settings', JSON.stringify(data));
+      return Promise.resolve({ success: true, data: data });
+    } catch (e) {
+      return Promise.reject(new Error('Failed to save settings'));
+    }
   }
 
   // ---- Customers ----
@@ -273,7 +304,7 @@ class ApiService {
     }, true);
   }
 
-  // ---- Orders (includes new shipping and dispatch methods) ----
+  // ---- Orders ----
   getOrders(params?: { page?: number; limit?: number; status?: string; customer_id?: string }) {
     return this._request<any>(`/orders${params ? `?${new URLSearchParams(params as any).toString()}` : ''}`, { method: 'GET' }, true)
       .then(response => {
