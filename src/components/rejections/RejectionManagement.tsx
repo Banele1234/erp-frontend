@@ -73,7 +73,6 @@ export default function RejectionManagement() {
     setShowCreateModal(true);
   };
 
-  // ✅ Fixed: use camelCase field names (rejectionNumber, rejectionDate, creditIssued, customer.companyName, product.name)
   const filteredRejections = rejections.filter((r) => {
     if (!r) return false;
     const searchLower = searchQuery.toLowerCase().trim();
@@ -215,7 +214,12 @@ export default function RejectionManagement() {
                   <TableCell>{rejection.quantity}</TableCell>
                   <TableCell className="max-w-xs truncate">{rejection.reason}</TableCell>
                   <TableCell>
-                    {rejection.rejectionDate ? new Date(rejection.rejectionDate).toLocaleDateString() : 'N/A'}
+                    {/* ✅ FALLBACK: show rejectionDate if exists, else createdAt */}
+                    {rejection.rejectionDate 
+                      ? new Date(rejection.rejectionDate).toLocaleDateString() 
+                      : rejection.createdAt 
+                        ? new Date(rejection.createdAt).toLocaleDateString() 
+                        : 'N/A'}
                   </TableCell>
                   <TableCell>
                     <Badge variant={
