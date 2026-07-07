@@ -352,7 +352,7 @@ export default function InventoryManagement() {
   );
 }
 
-// ========== Adjust Inventory Modal with improved error handling ==========
+// ========== Adjust Inventory Modal ==========
 function AdjustInventoryModal({
   isOpen,
   onClose,
@@ -381,21 +381,20 @@ function AdjustInventoryModal({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fetch products on search
+  // ✅ FIXED: Fetch products on search – simplified extraction
   useEffect(() => {
     if (!productSearch.trim()) {
       setProducts([]);
       return;
     }
+
     const timer = setTimeout(async () => {
       setIsProductLoading(true);
       try {
         const res = await apiService.getProducts({ search: productSearch, limit: 50 });
-        let data = res.data?.data || res.data?.content || res.data || [];
-        if (!Array.isArray(data)) {
-          data = [];
-        }
-        setProducts(data);
+        // res is already the array of products (from getProducts extraction)
+        console.log('🔍 Products fetched:', res);
+        setProducts(Array.isArray(res) ? res : []);
       } catch (error) {
         console.error('Error fetching products:', error);
         setProducts([]);
@@ -403,6 +402,7 @@ function AdjustInventoryModal({
         setIsProductLoading(false);
       }
     }, 300);
+
     return () => clearTimeout(timer);
   }, [productSearch]);
 

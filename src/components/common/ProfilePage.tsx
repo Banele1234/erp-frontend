@@ -7,7 +7,7 @@ import { useState, useEffect } from 'react';
 import { apiService } from '../../lib/api';
 
 export default function ProfilePage() {
-  const { user, customer, isLoading, refreshUser } = useAuth();
+  const { user, customer, isLoading, updateUser } = useAuth();   // ✅ get updateUser
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -77,7 +77,6 @@ export default function ProfilePage() {
     setIsSaving(true);
 
     try {
-      // ✅ Send only the fields (snake_case) – no IDs
       const updateData = {
         full_name: formData.full_name,
         company_name: formData.company_name,
@@ -89,11 +88,19 @@ export default function ProfilePage() {
         gst_number: formData.gst_number,
       };
 
-      await apiService.updateProfile(updateData);
-      setSuccess('Profile updated successfully!');
-      await refreshUser(); // refresh user and customer data
+      const response = await apiService.updateProfile(updateData);
+      // ✅ Extract updated user from response
+      // Response format: { data: { ...user }, success: true }
+      const updatedUser = response?.data || response;
+      if (updatedUser) {
+        updateUser(updatedUser);   // ✅ update auth context immediately
+      }
+
+      setSuccess('✅ Profile updated successfully!');
       setIsEditing(false);
-      setTimeout(() => setSuccess(''), 3000);
+
+      // Keep success message visible for 5 seconds
+      setTimeout(() => setSuccess(''), 5000);
     } catch (err: any) {
       console.error('Update error:', err);
       setError(err.message || 'Failed to update profile. Please try again.');

@@ -8,6 +8,7 @@ interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<{ error: string | null }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateUser: (user: User) => void;   // ✅ new method
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,7 +42,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       const customerData = response?.data?.customer || response?.customer || null;
 
       if (userData) {
-        // ✅ Normalize role to lowercase for consistent checks
         if (userData.role) userData.role = userData.role.toLowerCase();
         setState({
           user: userData,
@@ -50,13 +50,27 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
           isAuthenticated: true,
         });
       } else {
+        // Keep existing user if available
+        setState(prev => {
+          if (prev.user) {
+            console.warn('⚠️ GET /me returned no user data, keeping existing user.');
+            return { ...prev, isLoading: false };
+          } else {
+            console.warn('⚠️ GET /me returned no user data and no existing user – clearing auth.');
+            apiService.removeToken();
+            return { user: null, customer: null, isLoading: false, isAuthenticated: false };
+          }
+        });
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching user data:', error);
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) {
         apiService.removeToken();
         setState({ user: null, customer: null, isLoading: false, isAuthenticated: false });
+      } else {
+        setState(prev => ({ ...prev, isLoading: false }));
       }
-    } catch (error) {
-      console.error('❌ Error fetching user data:', error);
-      apiService.removeToken();
-      setState({ user: null, customer: null, isLoading: false, isAuthenticated: false });
     } finally {
       isFetchingRef.current = false;
     }
@@ -68,6 +82,11 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       await fetchUserData();
     }
   }, [fetchUserData]);
+
+  // ✅ New: update user state directly
+  const updateUser = useCallback((user: User) => {
+    setState(prev => ({ ...prev, user }));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -120,7 +139,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (token && user) {
-        // ✅ Normalize role to lowercase for consistent checks
         if (user.role) user.role = user.role.toLowerCase();
         apiService.setToken(token);
         setState({
@@ -159,7 +177,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   console.log('✅ AuthProvider providing context, state:', state);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, login, logout, refreshUser, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -170,7 +188,6 @@ export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     console.warn('⚠️ useAuth called outside AuthProvider – returning fallback');
-    // ✅ Return a safe fallback so components never crash
     return {
       user: null,
       customer: null,
@@ -179,6 +196,7 @@ export function useAuth() {
       login: async () => ({ error: 'Auth provider not initialized' }),
       logout: async () => {},
       refreshUser: async () => {},
+      updateUser: () => {},   // ✅ fallback no-op
     };
   }
   return context;

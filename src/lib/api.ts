@@ -1,9 +1,12 @@
 // src/lib/api.ts
 
-// ✅ Use environment variable, fallback to Railway URL
+// Use environment variable, fallback to Railway URL
 const API_BASE = import.meta.env.VITE_API_URL || 'https://erp-backend-production-5201.up.railway.app/api/v1';
 
-console.log('🔧 API_BASE:', API_BASE);  // check console for this
+// ✅ Correct endpoint for product creation – matches backend @PostMapping("/api/v1/products")
+const PRODUCT_CREATE_ENDPOINT = '/products';   // not '/products/new'
+
+console.log('🔧 API_BASE:', API_BASE);
 
 const TOKEN_KEY = 'token';
 
@@ -55,22 +58,26 @@ class ApiService {
     console.log(`🌐 ${options.method || 'GET'} ${url}`, { headers, body: options.body });
 
     const response = await fetch(url, config);
-    const contentType = response.headers.get('content-type');
     let data: any = null;
 
     const text = await response.text();
     console.log(`📄 Response status: ${response.status} ${response.statusText}`);
     console.log(`📄 Raw response (first 500 chars): ${text.substring(0, 500)}`);
 
-    if (text.length > 0 && contentType && contentType.includes('application/json')) {
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.warn('⚠️ Failed to parse JSON response:', e);
+    if (text.length > 0) {
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          console.warn('⚠️ Failed to parse JSON response:', e);
+          data = { raw: text };
+        }
+      } else {
         data = { raw: text };
       }
-    } else if (text.length > 0) {
-      data = { raw: text };
+    } else {
+      data = {};
     }
 
     if (!response.ok) {
@@ -103,7 +110,6 @@ class ApiService {
     }, false);
   }
 
-  // ✅ ADDED: Register method
   register(data: any) {
     console.log('📡 Register request with:', data);
     return this._request<any>('/auth/register', {
@@ -284,8 +290,9 @@ class ApiService {
       });
   }
 
+  // ✅ Product creation – now uses the correct endpoint '/products' with POST
   createProduct(data: any) {
-    return this._request<any>('/products', {
+    return this._request<any>(PRODUCT_CREATE_ENDPOINT, {
       method: 'POST',
       body: JSON.stringify(data),
     }, true);
@@ -373,7 +380,6 @@ class ApiService {
     }, true);
   }
 
-  // ---- NEW: Update shipping address ----
   updateShipping(orderId: string, data: {
     shippingAddress?: string;
     shippingCity?: string;
@@ -386,7 +392,6 @@ class ApiService {
     }, true);
   }
 
-  // ---- NEW: Update dispatch details ----
   updateDispatch(orderId: string, data: {
     trackingNumber?: string;
     courier?: string;
